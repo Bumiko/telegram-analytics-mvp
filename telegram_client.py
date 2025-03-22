@@ -3,7 +3,7 @@ import logging
 import time
 import asyncio
 from telethon import TelegramClient as TelethonClient
-from telethon.errors import FloodWaitError, ChatAdminRequiredError
+from telethon.errors import FloodWaitError, ChatAdminRequiredError, MessageIdInvalidError
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -124,7 +124,7 @@ class TelegramClient:
                 post = {
                     'id': message.id,
                     'channel_id': entity.id,
-                    'date': message.date.strftime('%Y-%m-%d %H:%M:%S'),
+                    'date': message.date.strftime('%Y-%m-%d %H:%m:%С'),
                     'text': message.text or '',
                     'views': getattr(message, 'views', 0),
                     'forwards': getattr(message, 'forwards', 0),
@@ -277,7 +277,7 @@ class TelegramClient:
                 post = {
                     'id': message.id,
                     'channel_id': entity.id,
-                    'date': message.date.strftime('%Y-%m-%d %H:%M:%S'),
+                    'date': message.date.strftime('%Y-%m-%d %H:%m:%С'),
                     'text': message.text or '',
                     'views': getattr(message, 'views', 0),
                     'forwards': getattr(message, 'forwards', 0),
@@ -330,73 +330,58 @@ class TelegramClient:
     async def _get_comments_async(self, posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Асинхронная версия получения комментариев к постам
-        
-        Args:
-            posts: Список постов, для которых нужно получить комментарии
-            
-        Returns:
-            Список словарей с информацией о комментариях
         """
         try:
             await self._connect()
             
             comments = []
-            total_comments = 0
-            processed_comments = 0
+            channel_entity = await self.client.get_entity(posts[0]['channel_id'])  # Получаем сущность канала
             
-            # Для каждого поста получаем комментарии
-            for post in posts:
+            for idx, post in enumerate(posts):
                 try:
-                    # Получение обсуждения для поста
-                    channel_id = post['channel_id']
-                    post_id = post['id']
-                    
-                    # Получение комментариев
-                    async for comment in self.client.iter_messages(
-                        entity=channel_id,
-                        reply_to=post_id
-                    ):
-                        # Формирование структуры комментария
-                        comment_data = {
+                    result = await self.client(GetRepliesRequest(
+                        peer=channel_entity,
+                        msg_id=post['id'],
+                        offset_id=0,
+                        offset_date=None,
+                        add_offset=0,
+                        limit=50,  # Ограничение на количество комментариев на пост
+                        max_id=0,
+                        min_id=0,
+                        hash=0
+                    ))
+
+                    for comment in result.messages:
+                        comments.append({
                             'id': comment.id,
-                            'post_id': post_id,
-                            'channel_id': channel_id,
-                            'user_id': comment.from_id.user_id if hasattr(comment.from_id, 'user_id') else None,
-                            'date': comment.date.strftime('%Y-%m-%d %H:%M:%S'),
+                            'post_id': post['id'],
+                            'channel_id': post['channel_id'],
+                            'user_id': getattr(comment.from_id, 'user_id', None),
+                            'date': comment.date.strftime('%Y-%m-%d %H:%m:%С'),
                             'text': comment.text or '',
-                            'likes': 0,  # К сожалению, API не предоставляет количество лайков
+                            'likes': 0,
                             'is_reply': bool(comment.reply_to_msg_id)
-                        }
-                        
-                        comments.append(comment_data)
-                        total_comments += 1
-                        
-                except (ChatAdminRequiredError, ValueError):
-                    # Для некоторых каналов невозможно получить комментарии без прав администратора
+                        })
+                    logger.info(f"[✅] Пост {post['id']}: получено {len(result.messages)} комментариев")
+
+                except MessageIdInvalidError:
+                    logger.warning(f"[⚠️] Пост {post['id']}: комментарии отключены или нет обсуждения.")
                     continue
-                
-                processed_comments += 1
-                
-                # Логирование прогресса
-                if processed_comments % 10 == 0 or processed_comments == len(posts):
-                    logger.info(f"Получение комментариев: обработано {processed_comments}/{len(posts)} постов")
-                
-                # Задержка для избежания ограничений API
-                if processed_comments % 50 == 0:
-                    time.sleep(1)
-            
-            logger.info(f"Всего загружено {total_comments} комментариев")
+                except FloodWaitError as e:
+                    logger.warning(f"[⏳] FLOOD WAIT {e.seconds} сек... Ждём.")
+                    await asyncio.sleep(e.seconds)
+                    continue
+                except Exception as e:
+                    logger.error(f"[❌] Ошибка при посте {post['id']}: {e}")
+                    continue
+
+            logger.info(f"[✅] Всего загружено комментариев: {len(comments)}")
             return comments
-            
-        except FloodWaitError as e:
-            # Обработка ограничения API
-            logger.warning(f"Достигнут лимит запросов. Требуется ожидание {e.seconds} секунд.")
-            raise
-            
+
         except Exception as e:
             logger.error(f"Ошибка при получении комментариев: {str(e)}")
             raise
-            
+
         finally:
             await self._disconnect()
     
@@ -414,3 +399,6 @@ class TelegramClient:
 
 # Импорт необходимых классов Telethon для полного доступа к каналу
 from telethon.tl.functions.channels import GetFullChannelRequest
+from telethon.errors import MessageIdInvalidError, FloodWaitError
+from telethon.tl.functions.messages import GetRepliesRequest
+import asyncio

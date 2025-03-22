@@ -13,6 +13,14 @@ from llm_interface import LLMInterface
 from report_generator import ReportGenerator
 from database import Database
 from telegram_auth import TelegramAuth
+from werkzeug.serving import WSGIRequestHandler
+
+# Увеличиваем размер очереди запросов
+WSGIRequestHandler.request_queue_size = 500
+
+# Увеличиваем таймаут для обработки запросов
+class CustomRequestHandler(WSGIRequestHandler):
+    timeout = 300  # Устанавливаем таймаут в 5 минут
 
 # Настройка логирования
 logging.basicConfig(
@@ -26,6 +34,7 @@ load_dotenv()
 
 # Инициализация компонентов
 app = Flask(__name__)
+app.config['TIMEOUT'] = 300  # Увеличиваем таймаут до 5 минут
 db = Database()
 telegram_client = TelegramClient()
 data_processor = DataProcessor()
@@ -427,5 +436,5 @@ if __name__ == '__main__':
     # Инициализация базы данных при запуске
     db.init_db()
     
-    # Запуск Flask сервера
-    app.run(debug=True)
+    # Запуск Flask сервера с кастомным обработчиком запросов
+    app.run(debug=True, request_handler=CustomRequestHandler)

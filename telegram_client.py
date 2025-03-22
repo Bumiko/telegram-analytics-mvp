@@ -1,6 +1,7 @@
 import os
 import logging
 import time
+import asyncio
 from telethon import TelegramClient as TelethonClient
 from telethon.errors import FloodWaitError, ChatAdminRequiredError
 from datetime import datetime, timedelta
@@ -8,6 +9,10 @@ from typing import List, Dict, Any, Optional
 
 # Настройка логирования
 logger = logging.getLogger(__name__)
+
+# Абсолютный путь к директории проекта
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SESSION_FILE = os.path.join(BASE_DIR, 'telegram_analytics')
 
 class TelegramClient:
     """Класс для работы с Telegram API через Telethon"""
@@ -17,14 +22,27 @@ class TelegramClient:
         self.api_id = int(os.getenv('TELEGRAM_API_ID', 0))
         self.api_hash = os.getenv('TELEGRAM_API_HASH', '')
         self.client = None
+        logger.info(f"Используется файл сессии: {SESSION_FILE}")
+    
+    def _run_async(self, coro):
+        """Запускает корутину в синхронном контексте, создавая новый цикл событий при необходимости"""
+        try:
+            # Попытка получить текущий цикл событий
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            # Если цикла нет, создаем новый
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
         
+        return loop.run_until_complete(coro)
+    
     async def _connect(self):
         """Подключение к Telegram API"""
         if self.client is None or not self.client.is_connected():
             logger.info("Установка соединения с Telegram API...")
             
             # Создание клиента с именем сессии 'telegram_analytics'
-            self.client = TelethonClient('telegram_analytics', self.api_id, self.api_hash)
+            self.client = TelethonClient(SESSION_FILE, self.api_id, self.api_hash)
             
             # Подключение к Telegram API
             await self.client.connect()
@@ -42,9 +60,9 @@ class TelegramClient:
             await self.client.disconnect()
             self.client = None
     
-    async def get_channel_info(self, channel_identifier: str) -> Dict[str, Any]:
+    async def _get_channel_info_async(self, channel_identifier: str) -> Dict[str, Any]:
         """
-        Получение информации о канале по его username или ID
+        Асинхронная версия получения информации о канале
         
         Args:
             channel_identifier: Username канала (с @ или без) или его ID
@@ -87,9 +105,21 @@ class TelegramClient:
         finally:
             await self._disconnect()
     
-    async def get_posts(self, channel_identifier: str, days: int = 30) -> List[Dict[str, Any]]:
+    def get_channel_info(self, channel_identifier: str) -> Dict[str, Any]:
         """
-        Получение постов канала за указанный период
+        Синхронная обертка для получения информации о канале
+        
+        Args:
+            channel_identifier: Username канала (с @ или без) или его ID
+            
+        Returns:
+            Словарь с информацией о канале
+        """
+        return self._run_async(self._get_channel_info_async(channel_identifier))
+    
+    async def _get_posts_async(self, channel_identifier: str, days: int = 30) -> List[Dict[str, Any]]:
+        """
+        Асинхронная версия получения постов канала
         
         Args:
             channel_identifier: Username канала (с @ или без) или его ID
@@ -110,15 +140,18 @@ class TelegramClient:
             # Получение постов
             posts = []
             post_count = 0
-            total_posts = None  # Узнаем после первой итерации
+            total_posts = 1  # Начальное значение
             
             logger.info(f"Получение постов за последние {days} дней...")
             
             async for message in self.client.iter_messages(entity, offset_date=start_date, reverse=True):
-                if not total_posts:
+                if post_count == 0:
                     # Примерная оценка количества постов
-                    total_posts = message.id
-                    
+                    try:
+                        total_posts = message.id
+                    except:
+                        total_posts = 100  # Примерная оценка, если не удалось получить ID
+                
                 # Пропуск служебных сообщений
                 if message.action:
                     continue
@@ -141,8 +174,8 @@ class TelegramClient:
                 post_count += 1
                 
                 # Логирование прогресса
-                if post_count % 10 == 0 or post_count == total_posts:
-                    progress = (post_count / total_posts * 100) if total_posts else 0
+                if post_count % 10 == 0 or post_count == 1:
+                    progress = (post_count / max(total_posts, 1) * 100)
                     logger.info(f"Загрузка постов: {post_count}/{total_posts} ({int(progress)}%)")
                 
                 # Задержка для избежания ограничений API
@@ -164,6 +197,19 @@ class TelegramClient:
         finally:
             await self._disconnect()
     
+    def get_posts(self, channel_identifier: str, days: int = 30) -> List[Dict[str, Any]]:
+        """
+        Синхронная обертка для получения постов канала
+        
+        Args:
+            channel_identifier: Username канала (с @ или без) или его ID
+            days: Количество дней для выборки постов (по умолчанию 30)
+            
+        Returns:
+            Список словарей с информацией о постах
+        """
+        return self._run_async(self._get_posts_async(channel_identifier, days))
+    
     def _get_media_type(self, message) -> Optional[str]:
         """Определение типа медиа в сообщении"""
         if not message.media:
@@ -172,9 +218,9 @@ class TelegramClient:
         media_type = type(message.media).__name__
         return media_type.replace('MessageMedia', '').lower()
     
-    async def get_comments(self, posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _get_comments_async(self, posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Получение комментариев к постам
+        Асинхронная версия получения комментариев к постам
         
         Args:
             posts: Список постов, для которых нужно получить комментарии
@@ -244,6 +290,18 @@ class TelegramClient:
             
         finally:
             await self._disconnect()
+    
+    def get_comments(self, posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Синхронная обертка для получения комментариев к постам
+        
+        Args:
+            posts: Список постов, для которых нужно получить комментарии
+            
+        Returns:
+            Список словарей с информацией о комментариях
+        """
+        return self._run_async(self._get_comments_async(posts))
 
 # Импорт необходимых классов Telethon для полного доступа к каналу
 from telethon.tl.functions.channels import GetFullChannelRequest

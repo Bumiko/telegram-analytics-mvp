@@ -4,10 +4,12 @@ python-dotenv==1.0.0
 
 # Библиотеки для работы с Telegram API
 Telethon==1.30.3
+pyaes==1.6.1
+rsa==4.9
 
 # Библиотеки для обработки данных
-pandas==2.1.0
-numpy==1.25.2
+pandas==2.2.1
+numpy==1.26.4
 nltk==3.8.1
 
 # Библиотеки для работы с OpenAI API

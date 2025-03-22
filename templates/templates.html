@@ -1,0 +1,113 @@
+html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Настройка шаблонов промптов</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+        }
+        .app-header {
+            background-color: #3498db;
+            color: white;
+            padding: 20px 0;
+            margin-bottom: 30px;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .template-item {
+            background-color: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 3px solid;
+        }
+        .template-item.system {
+            border-left-color: #3498db;
+        }
+        .template-item.context {
+            border-left-color: #2ecc71;
+        }
+        .template-item.instruction {
+            border-left-color: #f39c12;
+        }
+        .template-item.data {
+            border-left-color: #9b59b6;
+        }
+        .template-preview {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <header class="app-header">
+        <div class="container">
+            <h1 class="text-center">Настройка шаблонов промптов</h1>
+            <p class="text-center">Управление шаблонами для многоуровневых промптов</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="row">
+            <div class="col-md-8 mx-auto">
+                <div class="card">
+                    <div class="card-body">
+                        <h2 class="card-title mb-4">Шаблоны промптов</h2>
+                        <p class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> 
+                            Многоуровневые промпты используются для структурирования запросов к LLM.
+                            Каждый уровень выполняет свою роль в формировании качественного анализа.
+                        </p>
+                        
+                        <div class="templates-list">
+                            {% if templates %}
+                                {% for template in templates %}
+                                <div class="template-item {{ template.level }}">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <h5>{{ template.name }}</h5>
+                                            <p class="text-muted">Уровень: {{ template.level }}</p>
+                                            <p>{{ template.description }}</p>
+                                        </div>
+                                        <a href="/templates/{{ template.id }}" class="btn btn-outline-primary btn-sm">
+                                            <i class="bi bi-pencil"></i> Изменить
+                                        </a>
+                                    </div>
+                                    <div class="template-preview">
+                                        <pre>{{ template.template|truncate(200) }}</pre>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <p class="text-center text-muted">Шаблоны не найдены</p>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="d-grid gap-2 mt-4">
+                            <a href="/" class="btn btn-outline-secondary">
+                                <i class="bi bi-house"></i> На главную
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

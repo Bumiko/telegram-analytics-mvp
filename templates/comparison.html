@@ -1,0 +1,231 @@
+html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сравнение отчетов</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+        }
+        .app-header {
+            background-color: #3498db;
+            color: white;
+            padding: 20px 0;
+            margin-bottom: 30px;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .metrics-comparison {
+            border-collapse: separate;
+            border-spacing: 0;
+            width: 100%;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .metrics-comparison th, .metrics-comparison td {
+            padding: 12px 15px;
+            text-align: center;
+        }
+        .metrics-comparison thead th {
+            background-color: #34495e;
+            color: white;
+        }
+        .metrics-comparison tbody tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .increase {
+            color: #2ecc71;
+        }
+        .decrease {
+            color: #e74c3c;
+        }
+        .unchanged {
+            color: #7f8c8d;
+        }
+        .chart-container {
+            height: 300px;
+            margin-bottom: 20px;
+        }
+        .comparison-text {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <header class="app-header">
+        <div class="container">
+            <h1 class="text-center">Сравнение отчетов</h1>
+            <p class="text-center">Сравнение результатов анализа за разные периоды</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h2 class="card-title mb-4">Сравнение отчетов</h2>
+                        <p class="text-muted mb-4">
+                            Сравнение отчета от {{ comparison.report1.date }} с отчетом от {{ comparison.report2.date }}
+                            для канала "{{ comparison.report1.channel_name }}"
+                        </p>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="chart-container">
+                                    <canvas id="metrics-chart"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="chart-container">
+                                    <canvas id="growth-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <h3 class="mt-4">Сравнение ключевых метрик</h3>
+                        <div class="table-responsive">
+                            <table class="metrics-comparison">
+                                <thead>
+                                    <tr>
+                                        <th>Метрика</th>
+                                        <th>Отчет от {{ comparison.report1.date }}</th>
+                                        <th>Отчет от {{ comparison.report2.date }}</th>
+                                        <th>Изменение</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Средние просмотры</td>
+                                        <td>1,200</td>
+                                        <td>1,350</td>
+                                        <td class="increase">+12.5%</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Engagement Rate</td>
+                                        <td>2.8%</td>
+                                        <td>3.2%</td>
+                                        <td class="increase">+14.3%</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Комментарии (avg)</td>
+                                        <td>15</td>
+                                        <td>12</td>
+                                        <td class="decrease">-20.0%</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Репосты (avg)</td>
+                                        <td>25</td>
+                                        <td>28</td>
+                                        <td class="increase">+12.0%</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Медиа контент</td>
+                                        <td>60%</td>
+                                        <td>65%</td>
+                                        <td class="increase">+8.3%</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <h3 class="mt-4">Сравнительный анализ</h3>
+                        <div class="comparison-text">
+                            {{ comparison.comparison_html|safe }}
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="/reports" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-left"></i> К списку отчетов
+                            </a>
+                            <a href="/" class="btn btn-outline-primary">
+                                <i class="bi bi-house"></i> На главную
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // График сравнения метрик
+            new Chart(document.getElementById('metrics-chart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: ['Просмотры', 'ER', 'Комментарии', 'Репосты', 'Медиа'],
+                    datasets: [
+                        {
+                            label: 'Первый отчет',
+                            data: [1200, 2.8, 15, 25, 60],
+                            backgroundColor: 'rgba(52, 152, 219, 0.7)'
+                        },
+                        {
+                            label: 'Второй отчет',
+                            data: [1350, 3.2, 12, 28, 65],
+                            backgroundColor: 'rgba(46, 204, 113, 0.7)'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Сравнение ключевых метрик'
+                        }
+                    }
+                }
+            });
+            
+            // График роста
+            new Chart(document.getElementById('growth-chart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: ['Неделя 1', 'Неделя 2', 'Неделя 3', 'Неделя 4'],
+                    datasets: [
+                        {
+                            label: 'Первый период',
+                            data: [1000, 1100, 1150, 1200],
+                            borderColor: 'rgba(52, 152, 219, 1)',
+                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Второй период',
+                            data: [1200, 1250, 1300, 1350],
+                            borderColor: 'rgba(46, 204, 113, 1)',
+                            backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Динамика просмотров'
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>

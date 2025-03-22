@@ -1,0 +1,340 @@
+html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Данные канала {{ channel.name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+        }
+        .app-header {
+            background-color: #3498db;
+            color: white;
+            padding: 20px 0;
+            margin-bottom: 30px;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .channel-info {
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .nav-pills .nav-link.active {
+            background-color: #3498db;
+        }
+        .post-item {
+            border-left: 3px solid #3498db;
+            padding-left: 15px;
+            margin-bottom: 15px;
+        }
+        .comment-item {
+            border-left: 3px solid #2ecc71;
+            padding-left: 15px;
+            margin-bottom: 10px;
+        }
+        .chart-container {
+            height: 300px;
+            margin-bottom: 20px;
+        }
+        .analysis-container {
+            display: none;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <header class="app-header">
+        <div class="container">
+            <h1 class="text-center">{{ channel.name }}</h1>
+            <p class="text-center">@{{ channel.username }}</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="row">
+            <!-- Информация о канале -->
+            <div class="col-md-4">
+                <div class="channel-info">
+                    <h2>Обзор канала</h2>
+                    <p><strong>Описание:</strong> {{ channel.description }}</p>
+                    <p><strong>Подписчиков:</strong> {{ channel.subscribers }}</p>
+                    <p><strong>Дата создания:</strong> {{ channel.date_created }}</p>
+                    <p><strong>Количество постов:</strong> {{ posts|length }}</p>
+                    
+                    <div class="d-grid gap-2 mt-4">
+                        <button id="run-analysis-btn" class="btn btn-primary">
+                            <i class="bi bi-graph-up"></i> Выполнить анализ
+                        </button>
+                        <a href="/" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Назад
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Основной контент -->
+            <div class="col-md-8">
+                <ul class="nav nav-pills mb-3" id="pills-tab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="pills-posts-tab" data-bs-toggle="pill" data-bs-target="#pills-posts" type="button" role="tab" aria-controls="pills-posts" aria-selected="true">Посты</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="pills-comments-tab" data-bs-toggle="pill" data-bs-target="#pills-comments" type="button" role="tab" aria-controls="pills-comments" aria-selected="false">Комментарии</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="pills-metrics-tab" data-bs-toggle="pill" data-bs-target="#pills-metrics" type="button" role="tab" aria-controls="pills-metrics" aria-selected="false">Метрики</button>
+                    </li>
+                </ul>
+                
+                <div class="tab-content" id="pills-tabContent">
+                    <!-- Вкладка с постами -->
+                    <div class="tab-pane fade show active" id="pills-posts" role="tabpanel" aria-labelledby="pills-posts-tab">
+                        <div class="card">
+                            <div class="card-body">
+                                <h3 class="card-title">Посты канала</h3>
+                                <div class="posts-list">
+                                    {% for post in posts %}
+                                    <div class="post-item">
+                                        <h5>Пост #{{ post.telegram_id }}</h5>
+                                        <p class="text-muted">{{ post.date }}</p>
+                                        <p>{{ post.text[:200] }}{% if post.text|length > 200 %}...{% endif %}</p>
+                                        <div class="d-flex justify-content-between">
+                                            <span><i class="bi bi-eye"></i> {{ post.views }}</span>
+                                            <span><i class="bi bi-reply"></i> {{ post.forwards }}</span>
+                                            <span><i class="bi bi-chat"></i> {{ post.replies }}</span>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Вкладка с комментариями -->
+                    <div class="tab-pane fade" id="pills-comments" role="tabpanel" aria-labelledby="pills-comments-tab">
+                        <div class="card">
+                            <div class="card-body">
+                                <h3 class="card-title">Комментарии</h3>
+                                <p class="text-muted">Загрузка комментариев...</p>
+                                <!-- Комментарии будут загружены через AJAX -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Вкладка с метриками -->
+                    <div class="tab-pane fade" id="pills-metrics" role="tabpanel" aria-labelledby="pills-metrics-tab">
+                        <div class="card">
+                            <div class="card-body">
+                                <h3 class="card-title">Базовые метрики</h3>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="chart-container">
+                                            <canvas id="views-chart"></canvas>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="chart-container">
+                                            <canvas id="engagement-chart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <h4 class="mt-4">Активность по дням</h4>
+                                <div class="chart-container">
+                                    <canvas id="activity-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Контейнер для отображения прогресса анализа -->
+                <div class="analysis-container" id="analysis-container">
+                    <div class="card">
+                        <div class="card-body">
+                            <h3 class="card-title">Анализ данных</h3>
+                            <div class="progress mb-3">
+                                <div id="analysis-progress" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div id="analysis-status">Подготовка данных для анализа...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Данные для графиков
+        const postsData = {{ posts|tojson }};
+        
+        // Создание графиков при переключении на вкладку "Метрики"
+        document.getElementById('pills-metrics-tab').addEventListener('click', function() {
+            // График просмотров
+            const viewsData = postsData.map(post => ({
+                date: post.date,
+                views: post.views
+            })).sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            new Chart(document.getElementById('views-chart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: viewsData.map(d => d.date.split(' ')[0]),
+                    datasets: [{
+                        label: 'Просмотры',
+                        data: viewsData.map(d => d.views),
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Динамика просмотров'
+                        }
+                    }
+                }
+            });
+            
+            // График вовлеченности
+            const engagementData = postsData.map(post => ({
+                date: post.date,
+                engagement: post.views > 0 ? ((post.forwards + post.replies) / post.views * 100) : 0
+            })).sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            new Chart(document.getElementById('engagement-chart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: engagementData.map(d => d.date.split(' ')[0]),
+                    datasets: [{
+                        label: 'ER, %',
+                        data: engagementData.map(d => d.engagement.toFixed(2)),
+                        borderColor: '#2ecc71',
+                        backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Engagement Rate'
+                        }
+                    }
+                }
+            });
+            
+            // График активности по дням недели
+            const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+            const daysCounts = [0, 0, 0, 0, 0, 0, 0];
+            
+            postsData.forEach(post => {
+                const date = new Date(post.date);
+                const dayIndex = (date.getDay() + 6) % 7; // Преобразуем 0 (Вс) - 6 (Сб) в 0 (Пн) - 6 (Вс)
+                daysCounts[dayIndex]++;
+            });
+            
+            new Chart(document.getElementById('activity-chart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: days,
+                    datasets: [{
+                        label: 'Количество постов',
+                        data: daysCounts,
+                        backgroundColor: 'rgba(52, 152, 219, 0.7)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Активность по дням недели'
+                        }
+                    }
+                }
+            });
+        });
+        
+        // Обработка кнопки "Выполнить анализ"
+        document.getElementById('run-analysis-btn').addEventListener('click', function() {
+            // Показываем контейнер с прогрессом
+            document.getElementById('analysis-container').style.display = 'block';
+            
+            // Отправляем запрос на анализ
+            fetch('/run_analysis/{{ channel.id }}', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('analysis-status').textContent = 'Ошибка: ' + data.error;
+                    document.getElementById('analysis-progress').style.width = '0%';
+                    document.getElementById('analysis-progress').classList.add('bg-danger');
+                } else {
+                    document.getElementById('analysis-progress').style.width = '100%';
+                    document.getElementById('analysis-status').textContent = 'Анализ успешно выполнен! Перенаправление...';
+                    
+                    // Перенаправляем на страницу отчета
+                    setTimeout(() => {
+                        window.location.href = '/report/' + data.report_id;
+                    }, 1000);
+                }
+            })
+            .catch(error => {
+                document.getElementById('analysis-status').textContent = 'Ошибка: ' + error.message;
+                document.getElementById('analysis-progress').style.width = '0%';
+                document.getElementById('analysis-progress').classList.add('bg-danger');
+            });
+        });
+        
+        // Загрузка комментариев при переключении на вкладку
+        document.getElementById('pills-comments-tab').addEventListener('click', function() {
+            const commentsContainer = document.querySelector('#pills-comments .card-body');
+            commentsContainer.innerHTML = '<h3 class="card-title">Комментарии</h3><p class="text-muted">Загрузка комментариев...</p>';
+            
+            // Здесь должен быть запрос для получения комментариев
+            // В MVP просто отображаем заглушку
+            setTimeout(() => {
+                commentsContainer.innerHTML = `
+                    <h3 class="card-title">Комментарии</h3>
+                    <p class="text-muted">Показаны последние комментарии.</p>
+                    <div class="comments-list">
+                        <div class="comment-item">
+                            <p class="mb-1">Отличный пост! Спасибо за информацию.</p>
+                            <small class="text-muted">Пользователь123, 2023-11-10</small>
+                        </div>
+                        <div class="comment-item">
+                            <p class="mb-1">А можно подробнее об этом?</p>
+                            <small class="text-muted">Читатель456, 2023-11-09</small>
+                        </div>
+                        <div class="comment-item">
+                            <p class="mb-1">Не согласен с автором по поводу второго пункта.</p>
+                            <small class="text-muted">КритикXYZ, 2023-11-08</small>
+                        </div>
+                    </div>
+                `;
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

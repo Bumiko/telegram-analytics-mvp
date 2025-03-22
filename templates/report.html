@@ -1,0 +1,166 @@
+html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Отчет по каналу</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+        }
+        .app-header {
+            background-color: #3498db;
+            color: white;
+            padding: 20px 0;
+            margin-bottom: 30px;
+        }
+        .report-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        .sidebar {
+            position: sticky;
+            top: 20px;
+        }
+        .recommendations {
+            background-color: #e8f8f5;
+            border-left: 4px solid #2ecc71;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .chart-container {
+            height: 300px;
+            margin-bottom: 20px;
+        }
+        .export-options {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <header class="app-header">
+        <div class="container">
+            <h1 class="text-center">Аналитический отчет</h1>
+            <p class="text-center">{{ report.channel_name }} | {{ report.date }}</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="row">
+            <!-- Основной контент отчета -->
+            <div class="col-lg-8">
+                <div class="report-container">
+                    <div class="report-content">
+                        {{ report.response|safe }}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Боковая панель -->
+            <div class="col-lg-4">
+                <div class="sidebar">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h4 class="card-title">Ключевые метрики</h4>
+                            <div class="chart-container">
+                                <canvas id="metrics-chart"></canvas>
+                            </div>
+                            <hr>
+                            <div class="metrics-list">
+                                <p><strong>Просмотры (avg):</strong> <span id="avg-views">-</span></p>
+                                <p><strong>Вовлеченность (ER):</strong> <span id="avg-er">-</span>%</p>
+                                <p><strong>Рост просмотров:</strong> <span id="views-growth">-</span>%</p>
+                                <p><strong>Оптимальная длина:</strong> <span id="optimal-length">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h4 class="card-title">Действия</h4>
+                            <div class="d-grid gap-2">
+                                <a href="/channel/{{ report.channel_id }}" class="btn btn-outline-primary">
+                                    <i class="bi bi-arrow-left"></i> Вернуться к данным
+                                </a>
+                                <a href="/reports" class="btn btn-outline-secondary">
+                                    <i class="bi bi-list"></i> Все отчеты
+                                </a>
+                            </div>
+                            
+                            <div class="export-options">
+                                <h5>Экспорт отчета</h5>
+                                <div class="d-grid gap-2">
+                                    <a href="/export/{{ report.id }}/pdf" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-file-pdf"></i> PDF
+                                    </a>
+                                    <a href="/export/{{ report.id }}/json" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-file-code"></i> JSON
+                                    </a>
+                                    <a href="/export/{{ report.id }}/contentplan" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-calendar"></i> Контент-план
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Парсинг данных из отчета для отображения метрик
+        document.addEventListener('DOMContentLoaded', function() {
+            // Создаем график с ключевыми метриками
+            new Chart(document.getElementById('metrics-chart').getContext('2d'), {
+                type: 'radar',
+                data: {
+                    labels: ['Просмотры', 'Вовлеченность', 'Комментарии', 'Репосты', 'Рост'],
+                    datasets: [{
+                        label: 'Ваш канал',
+                        data: [70, 65, 60, 75, 80],
+                        backgroundColor: 'rgba(52, 152, 219, 0.2)',
+                        borderColor: 'rgba(52, 152, 219, 1)',
+                        pointBackgroundColor: 'rgba(52, 152, 219, 1)'
+                    }, {
+                        label: 'Средние значения',
+                        data: [60, 50, 45, 60, 65],
+                        backgroundColor: 'rgba(149, 165, 166, 0.2)',
+                        borderColor: 'rgba(149, 165, 166, 1)',
+                        pointBackgroundColor: 'rgba(149, 165, 166, 1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            min: 0,
+                            max: 100
+                        }
+                    }
+                }
+            });
+            
+            // Устанавливаем значения метрик
+            // В реальном приложении эти данные должны приходить с сервера
+            document.getElementById('avg-views').textContent = '1,200';
+            document.getElementById('avg-er').textContent = '2.8';
+            document.getElementById('views-growth').textContent = '+15.3';
+            document.getElementById('optimal-length').textContent = '500-1000 символов';
+        });
+    </script>
+</body>
+</html>

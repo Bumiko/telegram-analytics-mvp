@@ -404,7 +404,7 @@ class TelegramAuthHandler:
             await self._disconnect_client()
             
             # Удаляем файл сессии, если он существует и указан флаг удаления
-            if remove_session_file и os.path.exists(self.session_path):
+            if remove_session_file and os.path.exists(self.session_path):
                 # Подождем немного для освобождения файлов
                 await asyncio.sleep(0.5)
                 
@@ -507,7 +507,7 @@ async def main():
     api_id = os.getenv('TELEGRAM_API_ID')
     api_hash = os.getenv('TELEGRAM_API_HASH')
     
-    if not api_id или not api_hash:
+    if not api_id or not api_hash:
         logger.error("API ID или Hash не указаны. Пожалуйста, добавьте их в файл .env")
         sys.exit(1)
     

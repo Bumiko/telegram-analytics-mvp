@@ -12,8 +12,7 @@ from prompt_manager import PromptManager
 from llm_interface import LLMInterface
 from report_generator import ReportGenerator
 from database import Database
-from telethon import TelegramClient as TelethonClient
-from telethon.errors import SessionPasswordNeededError, AuthRestartError
+from telegram_auth import TelegramAuth
 
 # Настройка логирования
 logging.basicConfig(
@@ -24,9 +23,6 @@ logger = logging.getLogger(__name__)
 
 # Загрузка переменных окружения
 load_dotenv()
-
-# Путь к файлу сессии Telegram (должен совпадать с тем, что используется в telegram_client.py)
-TELEGRAM_SESSION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'telegram_analytics_bot')
 
 # Инициализация компонентов
 app = Flask(__name__)
@@ -40,232 +36,46 @@ report_generator = ReportGenerator()
 # Функция для проверки авторизации Telegram
 async def check_telegram_auth():
     """Проверка действительности авторизации Telegram"""
-    client = None
     try:
-        api_id = int(os.getenv('TELEGRAM_API_ID'))
-        api_hash = os.getenv('TELEGRAM_API_HASH')
-        
-        client = TelethonClient(TELEGRAM_SESSION_FILE, api_id, api_hash, device_model="Auth Check")
-        
-        # Подключение к Telegram API
-        await client.connect()
-        
-        # Проверка авторизации
-        is_authorized = await client.is_user_authorized()
-        
-        # Отключение от Telegram API
-        if client and client.is_connected():
-            await client.disconnect()
-        
-        return is_authorized
-    
+        result = await TelegramAuth.check_auth_status()
+        return result.get('is_authorized', False)
     except Exception as e:
         logger.error(f"Ошибка при проверке авторизации Telegram: {str(e)}")
-        if client and client.is_connected():
-            try:
-                await client.disconnect()
-            except:
-                pass
         return False
 
-# Функция для запуска авторизации Telegram
+# Функции авторизации Telegram
 async def start_telegram_auth(phone, session_id):
     """Запуск процесса авторизации Telegram"""
-    client = None
     try:
-        api_id = int(os.getenv('TELEGRAM_API_ID'))
-        api_hash = os.getenv('TELEGRAM_API_HASH')
-        
-        # Удалим существующую сессию, если она есть
-        session_path = f"{TELEGRAM_SESSION_FILE}.session"
-        if os.path.exists(session_path):
-            try:
-                os.remove(session_path)
-                logger.info(f"Удалена существующая сессия: {session_path}")
-            except:
-                logger.warning(f"Не удалось удалить файл сессии: {session_path}")
-        
-        # Создаем новый клиент
-        client = TelethonClient(TELEGRAM_SESSION_FILE, api_id, api_hash, device_model="Web Interface")
-        
-        # Запуск клиента
-        await client.connect()
-        
-        # Проверка подключения
-        if not client.is_connected():
-            raise Exception("Не удалось подключиться к Telegram API")
-        
-        # Отправка кода подтверждения
-        result = await client.send_code_request(phone)
-        
-        # Сохраняем phone_code_hash в данных сессии
-        with open(f'session_{session_id}.json', 'r') as f:
-            session_data = json.load(f)
-        
-        session_data['phone_code_hash'] = result.phone_code_hash
-        
-        with open(f'session_{session_id}.json', 'w') as f:
-            json.dump(session_data, f)
-        
-        # Отключение клиента
-        if client and client.is_connected():
-            await client.disconnect()
-            
-        return {'status': 'success'}
-        
+        result = await TelegramAuth.start_auth(phone)
+        return result
     except Exception as e:
         logger.error(f"Ошибка при запуске авторизации Telegram: {str(e)}")
-        # Отключение клиента в случае ошибки
-        if client and client.is_connected():
-            try:
-                await client.disconnect()
-            except:
-                pass
         return {'status': 'error', 'error': str(e)}
 
-# Функция для проверки кода авторизации
 async def verify_telegram_code_async(phone, code, session_data):
     """Асинхронная проверка кода авторизации Telegram"""
-    client = None
     try:
-        api_id = int(os.getenv('TELEGRAM_API_ID'))
-        api_hash = os.getenv('TELEGRAM_API_HASH')
-        
-        client = TelethonClient(TELEGRAM_SESSION_FILE, api_id, api_hash, device_model="Web Interface")
-        
-        # Запуск клиента
-        await client.connect()
-        
-        # Проверка подключения
-        if not client.is_connected():
-            raise Exception("Не удалось подключиться к Telegram API")
-        
-        try:
-            # Получаем phone_code_hash из сессии, если он есть
-            phone_code_hash = session_data.get('phone_code_hash')
+        # Получаем ID сессии из данных сессии
+        session_id = session_data.get('session_id')
+        if not session_id:
+            return {'status': 'error', 'error': 'Отсутствует идентификатор сессии'}
             
-            if phone_code_hash:
-                # Авторизация с полученным кодом и хешем
-                await client.sign_in(phone, code, phone_code_hash=phone_code_hash)
-                
-                # Проверка, что авторизация прошла успешно
-                is_authorized = await client.is_user_authorized()
-                if not is_authorized:
-                    raise Exception("Авторизация не выполнена несмотря на успешный запрос")
-                
-                # Отключение
-                if client and client.is_connected():
-                    await client.disconnect()
-                return {'status': 'success'}
-            else:
-                # Если phone_code_hash отсутствует, пробуем авторизоваться без него
-                try:
-                    await client.sign_in(phone, code)
-                    
-                    # Проверка, что авторизация прошла успешно
-                    is_authorized = await client.is_user_authorized()
-                    if not is_authorized:
-                        raise Exception("Авторизация не выполнена несмотря на успешный запрос")
-                        
-                    if client and client.is_connected():
-                        await client.disconnect()
-                    return {'status': 'success'}
-                except Exception as e:
-                    if "phone_code_hash" in str(e):
-                        # Если ошибка связана с отсутствием phone_code_hash, отправляем новый запрос кода
-                        result = await client.send_code_request(phone)
-                        phone_code_hash = result.phone_code_hash
-                        
-                        # Обновляем данные сессии с новым phone_code_hash
-                        session_data['phone_code_hash'] = phone_code_hash
-                        
-                        # Пробуем авторизоваться с новым phone_code_hash
-                        await client.sign_in(phone, code, phone_code_hash=phone_code_hash)
-                        
-                        # Проверка, что авторизация прошла успешно
-                        is_authorized = await client.is_user_authorized()
-                        if not is_authorized:
-                            raise Exception("Авторизация не выполнена несмотря на успешный запрос")
-                            
-                        if client and client.is_connected():
-                            await client.disconnect()
-                        return {'status': 'success'}
-                    else:
-                        raise
-            
-        except SessionPasswordNeededError:
-            # Если включена двухфакторная аутентификация
-            if client and client.is_connected():
-                await client.disconnect()
-            return {'status': '2fa_required'}
-            
-        except AuthRestartError:
-            # Если Telegram просит перезапустить авторизацию
-            if client and client.is_connected():
-                await client.disconnect()
-            
-            # Удаляем сессию и пробуем заново
-            session_path = f"{TELEGRAM_SESSION_FILE}.session"
-            if os.path.exists(session_path):
-                try:
-                    os.remove(session_path)
-                    logger.info(f"Удалена сессия после AuthRestartError: {session_path}")
-                except:
-                    pass
-                    
-            return {'status': 'restart_auth', 'error': 'Telegram требует перезапустить авторизацию. Пожалуйста, повторите попытку.'}
-            
+        result = await TelegramAuth.verify_code(session_id, code, phone)
+        return result
     except Exception as e:
         logger.error(f"Ошибка при проверке кода Telegram: {str(e)}")
-        if client and client.is_connected():
-            try:
-                await client.disconnect()
-            except:
-                pass
         return {'status': 'error', 'error': str(e)}
 
-# Функция для проверки пароля 2FA
 async def verify_telegram_2fa_async(password):
     """Асинхронная проверка пароля двухфакторной аутентификации"""
-    client = None
     try:
-        api_id = int(os.getenv('TELEGRAM_API_ID'))
-        api_hash = os.getenv('TELEGRAM_API_HASH')
-        
-        client = TelethonClient(TELEGRAM_SESSION_FILE, api_id, api_hash, device_model="Web Interface")
-        
-        # Запуск клиента
-        await client.connect()
-        
-        # Проверка подключения
-        if not client.is_connected():
-            raise Exception("Не удалось подключиться к Telegram API")
-        
-        try:
-            # Авторизация с паролем
-            await client.sign_in(password=password)
-            
-            # Проверка, что авторизация прошла успешно
-            is_authorized = await client.is_user_authorized()
-            if not is_authorized:
-                raise Exception("Авторизация не выполнена несмотря на успешный запрос")
-                
-            if client and client.is_connected():
-                await client.disconnect()
-            return {'status': 'success'}
-            
-        except Exception as e:
-            if client and client.is_connected():
-                await client.disconnect()
-            return {'status': 'error', 'error': str(e)}
-            
+        # В новой версии session_id передается напрямую из формы
+        session_id = request.form.get('session_id')
+        result = await TelegramAuth.verify_2fa(session_id, password)
+        return result
     except Exception as e:
         logger.error(f"Ошибка при проверке 2FA: {str(e)}")
-        if client and client.is_connected():
-            try:
-                await client.disconnect()
-            except:
-                pass
         return {'status': 'error', 'error': str(e)}
 
 @app.route('/')
@@ -432,18 +242,9 @@ def initialize():
         'OPENAI_API_KEY': os.getenv('OPENAI_API_KEY')
     }
     
-    # Проверяем наличие файла сессии Telegram и действительность авторизации
-    session_file_exists = os.path.exists(f"{TELEGRAM_SESSION_FILE}.session")
-    
     # Проверка действительности авторизации
-    is_authorized = False
-    if session_file_exists:
-        try:
-            is_authorized = asyncio.run(check_telegram_auth())
-        except:
-            is_authorized = False
-    
-    session_exists = session_file_exists and is_authorized
+    result = asyncio.run(TelegramAuth.check_auth_status())
+    session_exists = result.get('session_exists', False)
     
     return render_template('initialize.html', 
                           env_keys=env_keys, 
@@ -453,13 +254,12 @@ def initialize():
 def check_auth_status():
     """Проверка статуса авторизации Telegram для AJAX запросов"""
     try:
-        is_authorized = asyncio.run(check_telegram_auth())
-        session_exists = os.path.exists(f"{TELEGRAM_SESSION_FILE}.session") and is_authorized
+        result = asyncio.run(TelegramAuth.check_auth_status())
         
         return jsonify({
             'status': 'success',
-            'is_authorized': is_authorized,
-            'session_exists': session_exists
+            'is_authorized': result.get('is_authorized', False),
+            'session_exists': result.get('session_exists', False)
         })
     
     except Exception as e:
@@ -510,33 +310,16 @@ def init_telegram():
         if not phone:
             return jsonify({'error': 'Номер телефона не указан'}), 400
         
-        # Создаем сессию для асинхронного взаимодействия
-        session_data = {
-            'phone': phone,
-            'step': 'phone_sent',
-            'timestamp': datetime.now().timestamp()
-        }
-        
-        # Сохраняем данные сессии в файл
-        session_id = str(int(session_data['timestamp']))
-        with open(f'session_{session_id}.json', 'w') as f:
-            json.dump(session_data, f)
-        
         # Запускаем процесс отправки кода авторизации
-        result = asyncio.run(start_telegram_auth(phone, session_id))
+        result = asyncio.run(TelegramAuth.start_auth(phone))
         
         if result.get('status') == 'success':
             return jsonify({
                 'status': 'pending', 
-                'session_id': session_id,
+                'session_id': result.get('session_id'),
                 'message': 'Код авторизации отправлен на указанный номер'
             })
         else:
-            # Удаляем файл сессии в случае ошибки
-            try:
-                os.remove(f'session_{session_id}.json')
-            except:
-                pass
             return jsonify({'error': result.get('error', 'Неизвестная ошибка')}), 400
         
     except Exception as e:
@@ -550,36 +333,15 @@ def verify_telegram_code():
         # Получаем данные
         session_id = request.form.get('session_id')
         code = request.form.get('code')
-        phone = request.form.get('phone')  # Получаем телефон из формы
+        phone = request.form.get('phone')
         
-        if not session_id or not code or not phone:  # Проверяем наличие телефона
+        if not session_id or not code or not phone:
             return jsonify({'error': 'Не указан код, телефон или идентификатор сессии'}), 400
         
-        # Загружаем данные сессии - проверяем наличие файла
-        session_file = f'session_{session_id}.json'
-        if not os.path.exists(session_file):
-            return jsonify({'error': f'Файл сессии не найден: {session_file}'}), 400
-            
-        with open(session_file, 'r') as f:
-            session_data = json.load(f)
-        
-        # Обновляем данные сессии
-        session_data['code'] = code
-        session_data['step'] = 'code_sent'
-        
-        with open(session_file, 'w') as f:
-            json.dump(session_data, f)
-        
         # Проверяем код авторизации
-        result = asyncio.run(verify_telegram_code_async(phone, code, session_data))
+        result = asyncio.run(TelegramAuth.verify_code(session_id, code, phone))
         
         if result.get('status') == 'success':
-            # Удаляем файл сессии только в случае успеха
-            try:
-                os.remove(session_file)
-            except:
-                logger.warning(f"Не удалось удалить файл сессии: {session_file}")
-            
             return jsonify({
                 'status': 'success',
                 'message': 'Авторизация успешно завершена'
@@ -591,15 +353,14 @@ def verify_telegram_code():
                 'session_id': session_id
             })
         elif result.get('status') == 'restart_auth':
-            # Удаляем файл сессии
-            try:
-                os.remove(session_file)
-            except:
-                pass
-            
             return jsonify({
                 'status': 'restart_auth',
                 'message': 'Требуется перезапуск авторизации. Пожалуйста, повторите попытку.'
+            }), 400
+        elif result.get('status') == 'code_expired':
+            return jsonify({
+                'status': 'code_expired',
+                'message': 'Код подтверждения истек. Запросите новый код.'
             }), 400
         else:
             return jsonify({'error': result.get('error', 'Неизвестная ошибка')}), 400
@@ -619,23 +380,8 @@ def verify_telegram_2fa():
         if not session_id or not password:
             return jsonify({'error': 'Не указан пароль или идентификатор сессии'}), 400
         
-        # Загружаем данные сессии - проверяем наличие файла
-        session_file = f'session_{session_id}.json'
-        if not os.path.exists(session_file):
-            return jsonify({'error': f'Файл сессии не найден: {session_file}'}), 400
-            
-        with open(session_file, 'r') as f:
-            session_data = json.load(f)
-        
         # Проверяем пароль 2FA
-        result = asyncio.run(verify_telegram_2fa_async(password))
-        
-        # Удаляем файл сессии ТОЛЬКО если авторизация прошла успешно
-        if result.get('status') == 'success':
-            try:
-                os.remove(session_file)
-            except:
-                logger.warning(f"Не удалось удалить файл сессии: {session_file}")
+        result = asyncio.run(TelegramAuth.verify_2fa(session_id, password))
         
         if result.get('status') == 'success':
             return jsonify({
@@ -653,27 +399,18 @@ def verify_telegram_2fa():
 def reset_telegram_session():
     """Сброс сессии Telegram"""
     try:
-        session_path = f"{TELEGRAM_SESSION_FILE}.session"
-        if os.path.exists(session_path):
-            try:
-                os.remove(session_path)
-                logger.info(f"Сессия Telegram успешно удалена: {session_path}")
-            except:
-                logger.warning(f"Не удалось удалить файл сессии: {session_path}")
-                return jsonify({'error': 'Не удалось удалить файл сессии'}), 500
+        result = asyncio.run(TelegramAuth.reset_session())
         
-        # Удаляем все временные файлы сессий
-        for file in os.listdir('.'):
-            if file.startswith('session_') and file.endswith('.json'):
-                try:
-                    os.remove(file)
-                except:
-                    pass
-        
-        return jsonify({
-            'status': 'success',
-            'message': 'Сессия Telegram успешно сброшена'
-        })
+        if result.get('status') == 'success':
+            return jsonify({
+                'status': 'success',
+                'message': 'Сессия Telegram успешно сброшена'
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': result.get('error', 'Неизвестная ошибка')
+            }), 500
     except Exception as e:
         logger.error(f"Ошибка при сбросе сессии Telegram: {str(e)}")
         return jsonify({'error': f'Ошибка: {str(e)}'}), 500

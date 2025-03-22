@@ -47,6 +47,10 @@
             display: none;
             margin-top: 20px;
         }
+        .error-alert {
+            display: none;
+            margin-top: 15px;
+        }
     </style>
 </head>
 <body>
@@ -65,6 +69,10 @@
                     
                     <div class="progress mb-4">
                         <div id="progress-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    
+                    <div class="alert alert-danger error-alert" id="error-message">
+                        <i class="bi bi-exclamation-triangle-fill"></i> <span id="error-text"></span>
                     </div>
                     
                     <div class="steps">
@@ -113,13 +121,14 @@
                             <h3>Шаг 2: Авторизация в Telegram</h3>
                             <p class="text-muted">Авторизуйтесь в Telegram для доступа к API.</p>
                             
-                            {% if session_exists %}
-                                <div class="alert alert-success">
+                            <div id="auth-status-container">
+                                {% if session_exists %}
+                                <div class="alert alert-success" id="already-authorized">
                                     <i class="bi bi-check-circle-fill"></i> 
                                     Вы уже авторизованы в Telegram. Можете перейти к следующему шагу.
                                 </div>
                                 
-                                <div class="d-grid gap-2 mt-4">
+                                <div class="d-grid gap-2 mt-4" id="auth-nav-buttons">
                                     <button type="button" class="btn btn-secondary" id="reauth-telegram-btn">
                                         <i class="bi bi-arrow-repeat"></i> Повторить авторизацию
                                     </button>
@@ -127,7 +136,10 @@
                                         <i class="bi bi-arrow-right"></i> Перейти к следующему шагу
                                     </button>
                                 </div>
-                            {% else %}
+                                {% endif %}
+                            </div>
+                            
+                            <div id="auth-form-container" {% if session_exists %}style="display: none;"{% endif %}>
                                 <form id="telegram-auth-form">
                                     <div class="mb-3">
                                         <label for="phone" class="form-label">Номер телефона</label>
@@ -142,48 +154,58 @@
                                         <button type="submit" class="btn btn-primary" id="send-code-btn">
                                             <i class="bi bi-send"></i> Отправить код
                                         </button>
+                                        <button type="button" class="btn btn-outline-danger" id="reset-session-btn">
+                                            <i class="bi bi-trash"></i> Сбросить сессию
+                                        </button>
                                     </div>
                                 </form>
+                            </div>
+                            
+                            <div id="code-verification" style="display: none;">
+                                <h4>Подтверждение кода</h4>
+                                <p>На ваш телефон отправлен код подтверждения.</p>
                                 
-                                <div id="code-verification" class="mt-4" style="display: none;">
-                                    <h4>Подтверждение кода</h4>
-                                    <p>На ваш телефон отправлен код подтверждения.</p>
+                                <form id="code-verification-form">
+                                    <input type="hidden" id="session_id" name="session_id">
+                                    <input type="hidden" id="auth_phone" name="phone">
+                                    <div class="mb-3">
+                                        <label for="code" class="form-label">Код подтверждения</label>
+                                        <input type="number" class="form-control" id="code" name="code" 
+                                               placeholder="12345" required>
+                                    </div>
                                     
-                                    <form id="code-verification-form">
-                                        <input type="hidden" id="session_id" name="session_id">
-                                        <div class="mb-3">
-                                            <label for="code" class="form-label">Код подтверждения</label>
-                                            <input type="number" class="form-control" id="code" name="code" 
-                                                   placeholder="12345" required>
-                                        </div>
-                                        
-                                        <div class="d-grid gap-2">
-                                            <button type="submit" class="btn btn-primary">
-                                                <i class="bi bi-check-lg"></i> Подтвердить код
-                                            </button>
-                                        </div>
-                                    </form>
-                                </div>
+                                    <div class="d-grid gap-2">
+                                        <button type="submit" class="btn btn-primary">
+                                            <i class="bi bi-check-lg"></i> Подтвердить код
+                                        </button>
+                                        <button type="button" class="btn btn-outline-danger" id="reset-code-session-btn">
+                                            <i class="bi bi-trash"></i> Сбросить и начать заново
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            
+                            <div id="tfa-verification" style="display: none;">
+                                <h4>Двухфакторная аутентификация</h4>
+                                <p>Для вашего аккаунта включена двухфакторная аутентификация.</p>
                                 
-                                <div id="tfa-verification" class="mt-4" style="display: none;">
-                                    <h4>Двухфакторная аутентификация</h4>
-                                    <p>Для вашего аккаунта включена двухфакторная аутентификация.</p>
+                                <form id="tfa-verification-form">
+                                    <input type="hidden" id="tfa_session_id" name="session_id">
+                                    <div class="mb-3">
+                                        <label for="password" class="form-label">Пароль двухфакторной аутентификации</label>
+                                        <input type="password" class="form-control" id="password" name="password" required>
+                                    </div>
                                     
-                                    <form id="tfa-verification-form">
-                                        <input type="hidden" id="tfa_session_id" name="session_id">
-                                        <div class="mb-3">
-                                            <label for="password" class="form-label">Пароль двухфакторной аутентификации</label>
-                                            <input type="password" class="form-control" id="password" name="password" required>
-                                        </div>
-                                        
-                                        <div class="d-grid gap-2">
-                                            <button type="submit" class="btn btn-primary">
-                                                <i class="bi bi-shield-lock"></i> Подтвердить
-                                            </button>
-                                        </div>
-                                    </form>
-                                </div>
-                            {% endif %}
+                                    <div class="d-grid gap-2">
+                                        <button type="submit" class="btn btn-primary">
+                                            <i class="bi bi-shield-lock"></i> Подтвердить
+                                        </button>
+                                        <button type="button" class="btn btn-outline-danger" id="reset-tfa-session-btn">
+                                            <i class="bi bi-trash"></i> Сбросить и начать заново
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
                         </div>
                         
                         <!-- Шаг 3: Подтверждение и завершение -->
@@ -248,6 +270,20 @@
             document.getElementById('progress-bar').style.width = `${progress}%`;
         }
         
+        // Показать сообщение об ошибке
+        function showError(message) {
+            const errorAlert = document.getElementById('error-message');
+            const errorText = document.getElementById('error-text');
+            
+            errorText.textContent = message;
+            errorAlert.style.display = 'block';
+            
+            // Автоматически скрыть через 5 секунд
+            setTimeout(() => {
+                errorAlert.style.display = 'none';
+            }, 5000);
+        }
+        
         // Переключение между шагами
         function goToStep(step) {
             // Скрываем все шаги
@@ -263,6 +299,63 @@
             updateProgress(step);
         }
         
+        // Функция сброса сессии Telegram
+        function resetTelegramSession() {
+            const confirmReset = confirm('Вы уверены, что хотите сбросить сессию Telegram?');
+            if (!confirmReset) return;
+            
+            fetch('/reset_telegram_session')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showError(data.error);
+                    } else {
+                        // Перезагружаем страницу
+                        window.location.reload();
+                    }
+                })
+                .catch(error => {
+                    showError('Ошибка при сбросе сессии: ' + error.message);
+                });
+        }
+        
+        // Функция, которая периодически проверяет статус авторизации
+        function pollAuthStatus() {
+            fetch('/check_auth_status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Обновляем отображение в зависимости от статуса авторизации
+                        if (data.is_authorized) {
+                            // Пользователь авторизован
+                            if (document.getElementById('already-authorized') && 
+                                document.getElementById('already-authorized').style.display === 'none') {
+                                document.getElementById('already-authorized').style.display = 'block';
+                                document.getElementById('auth-nav-buttons').style.display = 'block';
+                                document.getElementById('auth-form-container').style.display = 'none';
+                                document.getElementById('code-verification').style.display = 'none';
+                                document.getElementById('tfa-verification').style.display = 'none';
+                            }
+                        } else {
+                            // Пользователь не авторизован
+                            if (document.getElementById('already-authorized')) {
+                                document.getElementById('already-authorized').style.display = 'none';
+                                document.getElementById('auth-nav-buttons').style.display = 'none';
+                                
+                                // Показываем форму авторизации, если не отображается форма ввода кода или 2FA
+                                if (document.getElementById('code-verification').style.display === 'none' &&
+                                    document.getElementById('tfa-verification').style.display === 'none') {
+                                    document.getElementById('auth-form-container').style.display = 'block';
+                                }
+                            }
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка при проверке статуса авторизации:', error);
+                });
+        }
+        
         // Форма конфигурации API ключей
         document.getElementById('config-form').addEventListener('submit', function(e) {
             e.preventDefault();
@@ -276,18 +369,18 @@
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
-                    alert('Ошибка: ' + data.error);
+                    showError(data.error);
                 } else {
                     // Переходим к следующему шагу
                     goToStep(2);
                 }
             })
             .catch(error => {
-                alert('Ошибка: ' + error.message);
+                showError('Ошибка: ' + error.message);
             });
         });
         
-        // Если уже авторизованы в Telegram, то кнопка перехода к следующему шагу
+        // Кнопка перехода к следующему шагу
         if (document.getElementById('go-to-step-3-btn')) {
             document.getElementById('go-to-step-3-btn').addEventListener('click', function() {
                 goToStep(3);
@@ -295,14 +388,29 @@
             });
         }
         
-        // Если нужно повторить авторизацию
+        // Кнопка повторной авторизации
         if (document.getElementById('reauth-telegram-btn')) {
             document.getElementById('reauth-telegram-btn').addEventListener('click', function() {
+                // Скрываем элементы авторизованного состояния
+                document.getElementById('already-authorized').style.display = 'none';
+                document.getElementById('auth-nav-buttons').style.display = 'none';
+                
                 // Показываем форму авторизации
-                document.getElementById('telegram-auth-form').style.display = 'block';
-                document.getElementById('reauth-telegram-btn').style.display = 'none';
-                document.getElementById('go-to-step-3-btn').style.display = 'none';
+                document.getElementById('auth-form-container').style.display = 'block';
             });
+        }
+        
+        // Кнопка сброса сессии
+        document.getElementById('reset-session-btn').addEventListener('click', resetTelegramSession);
+        
+        // Кнопка сброса сессии на этапе ввода кода
+        if (document.getElementById('reset-code-session-btn')) {
+            document.getElementById('reset-code-session-btn').addEventListener('click', resetTelegramSession);
+        }
+        
+        // Кнопка сброса сессии на этапе 2FA
+        if (document.getElementById('reset-tfa-session-btn')) {
+            document.getElementById('reset-tfa-session-btn').addEventListener('click', resetTelegramSession);
         }
         
         // Форма авторизации Telegram
@@ -315,6 +423,7 @@
                 sendCodeBtn.disabled = true;
                 
                 const formData = new FormData(this);
+                const phone = formData.get('phone');
                 
                 fetch('/init_telegram', {
                     method: 'POST',
@@ -326,18 +435,19 @@
                     sendCodeBtn.disabled = false;
                     
                     if (data.error) {
-                        alert('Ошибка: ' + data.error);
+                        showError('Ошибка: ' + data.error);
                     } else if (data.status === 'pending') {
                         // Показываем форму ввода кода
-                        document.getElementById('telegram-auth-form').style.display = 'none';
+                        document.getElementById('auth-form-container').style.display = 'none';
                         document.getElementById('code-verification').style.display = 'block';
                         document.getElementById('session_id').value = data.session_id;
+                        document.getElementById('auth_phone').value = phone;
                     }
                 })
                 .catch(error => {
                     sendCodeBtn.innerHTML = '<i class="bi bi-send"></i> Отправить код';
                     sendCodeBtn.disabled = false;
-                    alert('Ошибка: ' + error.message);
+                    showError('Ошибка: ' + error.message);
                 });
             });
         }
@@ -364,7 +474,7 @@
                     submitBtn.disabled = false;
                     
                     if (data.error) {
-                        alert('Ошибка: ' + data.error);
+                        showError('Ошибка: ' + data.error);
                     } else if (data.status === 'success') {
                         // Переходим к следующему шагу
                         alert('Авторизация успешно завершена');
@@ -375,12 +485,17 @@
                         document.getElementById('code-verification').style.display = 'none';
                         document.getElementById('tfa-verification').style.display = 'block';
                         document.getElementById('tfa_session_id').value = data.session_id;
+                    } else if (data.status === 'restart_auth') {
+                        showError('Требуется перезапуск авторизации: ' + data.message);
+                        // Возвращаемся к форме ввода телефона
+                        document.getElementById('code-verification').style.display = 'none';
+                        document.getElementById('auth-form-container').style.display = 'block';
                     }
                 })
                 .catch(error => {
                     submitBtn.innerHTML = '<i class="bi bi-check-lg"></i> Подтвердить код';
                     submitBtn.disabled = false;
-                    alert('Ошибка: ' + error.message);
+                    showError('Ошибка: ' + error.message);
                 });
             });
         }
@@ -407,7 +522,7 @@
                     submitBtn.disabled = false;
                     
                     if (data.error) {
-                        alert('Ошибка: ' + data.error);
+                        showError('Ошибка: ' + data.error);
                     } else if (data.status === 'success') {
                         // Переходим к следующему шагу
                         alert('Авторизация успешно завершена');
@@ -418,7 +533,7 @@
                 .catch(error => {
                     submitBtn.innerHTML = '<i class="bi bi-shield-lock"></i> Подтвердить';
                     submitBtn.disabled = false;
-                    alert('Ошибка: ' + error.message);
+                    showError('Ошибка: ' + error.message);
                 });
             });
         }
@@ -449,11 +564,10 @@
                 telegramAuthMessage.textContent = 'Авторизация в Telegram не выполнена';
             }
             
-            // Проверка базы данных
+            // Проверка базы данных - всегда считаем её инициализированной
             const databaseStatus = document.getElementById('database-status');
             const databaseMessage = document.getElementById('database-message');
             
-            // Здесь проверка условная, т.к. без запроса на сервер мы не знаем состояние БД
             databaseStatus.innerHTML = '<i class="bi bi-check-circle-fill checkmark"></i>';
             databaseMessage.textContent = 'База данных инициализирована';
             
@@ -475,6 +589,15 @@
                 goToStep(1);
             });
         }
+        
+        // Запускаем проверку статуса авторизации при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            // Проверяем статус авторизации
+            pollAuthStatus();
+            
+            // Запускаем периодическую проверку каждые 5 секунд
+            setInterval(pollAuthStatus, 5000);
+        });
     </script>
 </body>
 </html>

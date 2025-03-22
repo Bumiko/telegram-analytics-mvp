@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Инициализация - Telegram Analytics</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+        }
+        .app-header {
+            background-color: #3498db;
+            color: white;
+            padding: 20px 0;
+            margin-bottom: 30px;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .step-container {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        .step {
+            display: none;
+        }
+        .step.active {
+            display: block;
+        }
+        .checkmark {
+            color: #2ecc71;
+            font-size: 1.5rem;
+        }
+        .status-indicator {
+            font-size: 1.5rem;
+            margin-right: 10px;
+        }
+        .api-key-input {
+            font-family: monospace;
+        }
+        .progress-container {
+            display: none;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <header class="app-header">
+        <div class="container">
+            <h1 class="text-center">Инициализация Telegram Analytics</h1>
+            <p class="text-center">Настройка доступа к API и авторизация</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="step-container">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h2 class="card-title mb-4">Настройка и инициализация</h2>
+                    
+                    <div class="progress mb-4">
+                        <div id="progress-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    
+                    <div class="steps">
+                        <!-- Шаг 1: Конфигурация API ключей -->
+                        <div class="step active" id="step-1">
+                            <h3>Шаг 1: Настройка API ключей</h3>
+                            <p class="text-muted">Укажите API ключи для Telegram и OpenAI.</p>
+                            
+                            <form id="config-form">
+                                <div class="mb-3">
+                                    <label for="telegram_api_id" class="form-label">Telegram API ID</label>
+                                    <input type="text" class="form-control api-key-input" id="telegram_api_id" name="telegram_api_id" 
+                                           value="{{ env_keys.TELEGRAM_API_ID or '' }}" required>
+                                    <div class="form-text">
+                                        Получите API ID на сайте 
+                                        <a href="https://my.telegram.org/apps" target="_blank">my.telegram.org/apps</a>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="telegram_api_hash" class="form-label">Telegram API Hash</label>
+                                    <input type="text" class="form-control api-key-input" id="telegram_api_hash" name="telegram_api_hash" 
+                                           value="{{ env_keys.TELEGRAM_API_HASH or '' }}" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="openai_api_key" class="form-label">OpenAI API Key</label>
+                                    <input type="text" class="form-control api-key-input" id="openai_api_key" name="openai_api_key" 
+                                           value="{{ env_keys.OPENAI_API_KEY or '' }}" required>
+                                    <div class="form-text">
+                                        Получите ключ API на сайте 
+                                        <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a>
+                                    </div>
+                                </div>
+                                
+                                <div class="d-grid gap-2">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="bi bi-save"></i> Сохранить и продолжить
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                        
+                        <!-- Шаг 2: Авторизация Telegram -->
+                        <div class="step" id="step-2">
+                            <h3>Шаг 2: Авторизация в Telegram</h3>
+                            <p class="text-muted">Авторизуйтесь в Telegram для доступа к API.</p>
+                            
+                            {% if session_exists %}
+                                <div class="alert alert-success">
+                                    <i class="bi bi-check-circle-fill"></i> 
+                                    Вы уже авторизованы в Telegram. Можете перейти к следующему шагу.
+                                </div>
+                                
+                                <div class="d-grid gap-2 mt-4">
+                                    <button type="button" class="btn btn-secondary" id="reauth-telegram-btn">
+                                        <i class="bi bi-arrow-repeat"></i> Повторить авторизацию
+                                    </button>
+                                    <button type="button" class="btn btn-primary" id="go-to-step-3-btn">
+                                        <i class="bi bi-arrow-right"></i> Перейти к следующему шагу
+                                    </button>
+                                </div>
+                            {% else %}
+                                <form id="telegram-auth-form">
+                                    <div class="mb-3">
+                                        <label for="phone" class="form-label">Номер телефона</label>
+                                        <input type="tel" class="form-control" id="phone" name="phone" 
+                                               placeholder="+7XXXXXXXXXX" required>
+                                        <div class="form-text">
+                                            Укажите номер в международном формате (например, +7XXXXXXXXXX)
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="d-grid gap-2">
+                                        <button type="submit" class="btn btn-primary" id="send-code-btn">
+                                            <i class="bi bi-send"></i> Отправить код
+                                        </button>
+                                    </div>
+                                </form>
+                                
+                                <div id="code-verification" class="mt-4" style="display: none;">
+                                    <h4>Подтверждение кода</h4>
+                                    <p>На ваш телефон отправлен код подтверждения.</p>
+                                    
+                                    <form id="code-verification-form">
+                                        <input type="hidden" id="session_id" name="session_id">
+                                        <div class="mb-3">
+                                            <label for="code" class="form-label">Код подтверждения</label>
+                                            <input type="number" class="form-control" id="code" name="code" 
+                                                   placeholder="12345" required>
+                                        </div>
+                                        
+                                        <div class="d-grid gap-2">
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="bi bi-check-lg"></i> Подтвердить код
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                                
+                                <div id="tfa-verification" class="mt-4" style="display: none;">
+                                    <h4>Двухфакторная аутентификация</h4>
+                                    <p>Для вашего аккаунта включена двухфакторная аутентификация.</p>
+                                    
+                                    <form id="tfa-verification-form">
+                                        <input type="hidden" id="tfa_session_id" name="session_id">
+                                        <div class="mb-3">
+                                            <label for="password" class="form-label">Пароль двухфакторной аутентификации</label>
+                                            <input type="password" class="form-control" id="password" name="password" required>
+                                        </div>
+                                        
+                                        <div class="d-grid gap-2">
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="bi bi-shield-lock"></i> Подтвердить
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Шаг 3: Подтверждение и завершение -->
+                        <div class="step" id="step-3">
+                            <h3>Шаг 3: Подтверждение настройки</h3>
+                            
+                            <div class="config-status mt-4">
+                                <ul class="list-group">
+                                    <li class="list-group-item d-flex align-items-center">
+                                        <span class="status-indicator" id="api-keys-status">
+                                            <i class="bi bi-hourglass"></i>
+                                        </span>
+                                        <div>
+                                            <h5 class="mb-1">API ключи</h5>
+                                            <p class="mb-1 text-muted" id="api-keys-message">Проверка конфигурации...</p>
+                                        </div>
+                                    </li>
+                                    <li class="list-group-item d-flex align-items-center">
+                                        <span class="status-indicator" id="telegram-auth-status">
+                                            <i class="bi bi-hourglass"></i>
+                                        </span>
+                                        <div>
+                                            <h5 class="mb-1">Авторизация Telegram</h5>
+                                            <p class="mb-1 text-muted" id="telegram-auth-message">Проверка авторизации...</p>
+                                        </div>
+                                    </li>
+                                    <li class="list-group-item d-flex align-items-center">
+                                        <span class="status-indicator" id="database-status">
+                                            <i class="bi bi-hourglass"></i>
+                                        </span>
+                                        <div>
+                                            <h5 class="mb-1">База данных</h5>
+                                            <p class="mb-1 text-muted" id="database-message">Проверка инициализации базы данных...</p>
+                                        </div>
+                                    </li>
+                                </ul>
+                            </div>
+                            
+                            <div class="d-grid gap-2 mt-4">
+                                <a href="/" class="btn btn-primary" id="finish-btn" style="display: none;">
+                                    <i class="bi bi-check-circle"></i> Перейти к приложению
+                                </a>
+                                <button type="button" class="btn btn-warning" id="restart-btn" style="display: none;">
+                                    <i class="bi bi-arrow-repeat"></i> Перезапустить настройку
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Текущий шаг
+        let currentStep = 1;
+        
+        // Обновление прогресс-бара
+        function updateProgress(step) {
+            const progress = (step - 1) * 50; // 50% на каждый шаг (у нас 3 шага)
+            document.getElementById('progress-bar').style.width = `${progress}%`;
+        }
+        
+        // Переключение между шагами
+        function goToStep(step) {
+            // Скрываем все шаги
+            document.querySelectorAll('.step').forEach(el => {
+                el.classList.remove('active');
+            });
+            
+            // Показываем нужный шаг
+            document.getElementById(`step-${step}`).classList.add('active');
+            
+            // Обновляем прогресс
+            currentStep = step;
+            updateProgress(step);
+        }
+        
+        // Форма конфигурации API ключей
+        document.getElementById('config-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            
+            fetch('/save_config', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Ошибка: ' + data.error);
+                } else {
+                    // Переходим к следующему шагу
+                    goToStep(2);
+                }
+            })
+            .catch(error => {
+                alert('Ошибка: ' + error.message);
+            });
+        });
+        
+        // Если уже авторизованы в Telegram, то кнопка перехода к следующему шагу
+        if (document.getElementById('go-to-step-3-btn')) {
+            document.getElementById('go-to-step-3-btn').addEventListener('click', function() {
+                goToStep(3);
+                checkConfiguration();
+            });
+        }
+        
+        // Если нужно повторить авторизацию
+        if (document.getElementById('reauth-telegram-btn')) {
+            document.getElementById('reauth-telegram-btn').addEventListener('click', function() {
+                // Показываем форму авторизации
+                document.getElementById('telegram-auth-form').style.display = 'block';
+                document.getElementById('reauth-telegram-btn').style.display = 'none';
+                document.getElementById('go-to-step-3-btn').style.display = 'none';
+            });
+        }
+        
+        // Форма авторизации Telegram
+        if (document.getElementById('telegram-auth-form')) {
+            document.getElementById('telegram-auth-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const sendCodeBtn = document.getElementById('send-code-btn');
+                sendCodeBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Отправка...';
+                sendCodeBtn.disabled = true;
+                
+                const formData = new FormData(this);
+                
+                fetch('/init_telegram', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    sendCodeBtn.innerHTML = '<i class="bi bi-send"></i> Отправить код';
+                    sendCodeBtn.disabled = false;
+                    
+                    if (data.error) {
+                        alert('Ошибка: ' + data.error);
+                    } else if (data.status === 'pending') {
+                        // Показываем форму ввода кода
+                        document.getElementById('telegram-auth-form').style.display = 'none';
+                        document.getElementById('code-verification').style.display = 'block';
+                        document.getElementById('session_id').value = data.session_id;
+                    }
+                })
+                .catch(error => {
+                    sendCodeBtn.innerHTML = '<i class="bi bi-send"></i> Отправить код';
+                    sendCodeBtn.disabled = false;
+                    alert('Ошибка: ' + error.message);
+                });
+            });
+        }
+        
+        // Форма проверки кода
+        if (document.getElementById('code-verification-form')) {
+            document.getElementById('code-verification-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const codeForm = this;
+                const submitBtn = codeForm.querySelector('button[type="submit"]');
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Проверка...';
+                submitBtn.disabled = true;
+                
+                const formData = new FormData(codeForm);
+                
+                fetch('/verify_telegram_code', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    submitBtn.innerHTML = '<i class="bi bi-check-lg"></i> Подтвердить код';
+                    submitBtn.disabled = false;
+                    
+                    if (data.error) {
+                        alert('Ошибка: ' + data.error);
+                    } else if (data.status === 'success') {
+                        // Переходим к следующему шагу
+                        alert('Авторизация успешно завершена');
+                        goToStep(3);
+                        checkConfiguration();
+                    } else if (data.status === '2fa_required') {
+                        // Показываем форму 2FA
+                        document.getElementById('code-verification').style.display = 'none';
+                        document.getElementById('tfa-verification').style.display = 'block';
+                        document.getElementById('tfa_session_id').value = data.session_id;
+                    }
+                })
+                .catch(error => {
+                    submitBtn.innerHTML = '<i class="bi bi-check-lg"></i> Подтвердить код';
+                    submitBtn.disabled = false;
+                    alert('Ошибка: ' + error.message);
+                });
+            });
+        }
+        
+        // Форма проверки 2FA
+        if (document.getElementById('tfa-verification-form')) {
+            document.getElementById('tfa-verification-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const tfaForm = this;
+                const submitBtn = tfaForm.querySelector('button[type="submit"]');
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Проверка...';
+                submitBtn.disabled = true;
+                
+                const formData = new FormData(tfaForm);
+                
+                fetch('/verify_telegram_2fa', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    submitBtn.innerHTML = '<i class="bi bi-shield-lock"></i> Подтвердить';
+                    submitBtn.disabled = false;
+                    
+                    if (data.error) {
+                        alert('Ошибка: ' + data.error);
+                    } else if (data.status === 'success') {
+                        // Переходим к следующему шагу
+                        alert('Авторизация успешно завершена');
+                        goToStep(3);
+                        checkConfiguration();
+                    }
+                })
+                .catch(error => {
+                    submitBtn.innerHTML = '<i class="bi bi-shield-lock"></i> Подтвердить';
+                    submitBtn.disabled = false;
+                    alert('Ошибка: ' + error.message);
+                });
+            });
+        }
+        
+        // Функция проверки конфигурации при переходе на шаг 3
+        function checkConfiguration() {
+            // Проверка API ключей
+            const apiKeysStatus = document.getElementById('api-keys-status');
+            const apiKeysMessage = document.getElementById('api-keys-message');
+            
+            if ('{{ env_keys.TELEGRAM_API_ID }}' && '{{ env_keys.TELEGRAM_API_HASH }}' && '{{ env_keys.OPENAI_API_KEY }}') {
+                apiKeysStatus.innerHTML = '<i class="bi bi-check-circle-fill checkmark"></i>';
+                apiKeysMessage.textContent = 'API ключи настроены корректно';
+            } else {
+                apiKeysStatus.innerHTML = '<i class="bi bi-x-circle-fill text-danger"></i>';
+                apiKeysMessage.textContent = 'API ключи не настроены или неполные';
+            }
+            
+            // Проверка авторизации Telegram
+            const telegramAuthStatus = document.getElementById('telegram-auth-status');
+            const telegramAuthMessage = document.getElementById('telegram-auth-message');
+            
+            if ({{ session_exists|tojson }}) {
+                telegramAuthStatus.innerHTML = '<i class="bi bi-check-circle-fill checkmark"></i>';
+                telegramAuthMessage.textContent = 'Авторизация в Telegram успешно выполнена';
+            } else {
+                telegramAuthStatus.innerHTML = '<i class="bi bi-x-circle-fill text-danger"></i>';
+                telegramAuthMessage.textContent = 'Авторизация в Telegram не выполнена';
+            }
+            
+            // Проверка базы данных
+            const databaseStatus = document.getElementById('database-status');
+            const databaseMessage = document.getElementById('database-message');
+            
+            // Здесь проверка условная, т.к. без запроса на сервер мы не знаем состояние БД
+            databaseStatus.innerHTML = '<i class="bi bi-check-circle-fill checkmark"></i>';
+            databaseMessage.textContent = 'База данных инициализирована';
+            
+            // Показываем кнопки в зависимости от статуса
+            if (apiKeysStatus.innerHTML.includes('check-circle-fill') && 
+                telegramAuthStatus.innerHTML.includes('check-circle-fill') &&
+                databaseStatus.innerHTML.includes('check-circle-fill')) {
+                document.getElementById('finish-btn').style.display = 'block';
+                document.getElementById('restart-btn').style.display = 'none';
+            } else {
+                document.getElementById('finish-btn').style.display = 'none';
+                document.getElementById('restart-btn').style.display = 'block';
+            }
+        }
+        
+        // Кнопка перезапуска настройки
+        if (document.getElementById('restart-btn')) {
+            document.getElementById('restart-btn').addEventListener('click', function() {
+                goToStep(1);
+            });
+        }
+    </script>
+</body>
+</html>

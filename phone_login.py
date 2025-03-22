@@ -32,8 +32,8 @@ async def main():
     # Конвертация строкового API ID в целое число
     api_id = int(api_id)
     
-    # Создание клиента
-    client = TelegramClient('telegram_analytics', api_id, api_hash)
+    # Создание клиента с отдельным именем сессии и device_model
+    client = TelegramClient('telegram_analytics_bot', api_id, api_hash, device_model="Analytics Bot")
     
     # Запуск клиента
     await client.start()

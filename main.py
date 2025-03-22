@@ -1,5 +1,8 @@
 import os
 import logging
+import json
+import asyncio
+from datetime import datetime
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 from telegram_client import TelegramClient
@@ -8,6 +11,8 @@ from prompt_manager import PromptManager
 from llm_interface import LLMInterface
 from report_generator import ReportGenerator
 from database import Database
+from telethon import TelegramClient as TelethonClient
+from telethon.errors import SessionPasswordNeededError
 
 # Настройка логирования
 logging.basicConfig(
@@ -18,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 # Загрузка переменных окружения
 load_dotenv()
+
+# Путь к файлу сессии Telegram (должен совпадать с тем, что используется в telegram_client.py)
+TELEGRAM_SESSION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'telegram_analytics_bot')
 
 # Инициализация компонентов
 app = Flask(__name__)
@@ -37,7 +45,7 @@ def index():
 def analyze():
     """Запуск процесса сбора и анализа данных"""
     channel = request.form.get('channel')
-    days = int(request.form.get('days', 30))
+    days = int(request.form.get('days', 180))  # Увеличиваем до 180 по умолчанию
     
     if not channel:
         return jsonify({'error': 'Канал не указан'}), 400
@@ -46,11 +54,8 @@ def analyze():
     try:
         logger.info(f"Начинается сбор данных для канала {channel} за {days} дней")
         
-        # Получение информации о канале
-        channel_info = telegram_client.get_channel_info(channel)
-        
-        # Получение постов
-        posts = telegram_client.get_posts(channel, days)
+        # Получение информации о канале и постов за один запрос
+        channel_info, posts = telegram_client.get_channel_info_and_posts(channel, days)
         logger.info(f"Найдено {len(posts)} постов за указанный период")
         
         # Получение комментариев
@@ -185,6 +190,243 @@ def edit_template(template_id):
     template = db.get_prompt_template(template_id)
     return render_template('edit_template.html', template=template)
 
+@app.route('/initialize')
+def initialize():
+    """Страница инициализации и настройки приложения"""
+    # Проверяем наличие необходимых API ключей
+    env_keys = {
+        'TELEGRAM_API_ID': os.getenv('TELEGRAM_API_ID'),
+        'TELEGRAM_API_HASH': os.getenv('TELEGRAM_API_HASH'),
+        'OPENAI_API_KEY': os.getenv('OPENAI_API_KEY')
+    }
+    
+    # Проверяем наличие файла сессии Telegram
+    session_exists = os.path.exists(f"{TELEGRAM_SESSION_FILE}.session")
+    
+    return render_template('initialize.html', 
+                          env_keys=env_keys, 
+                          session_exists=session_exists)
+
+@app.route('/save_config', methods=['POST'])
+def save_config():
+    """Сохранение конфигурации и API ключей"""
+    try:
+        # Получаем данные формы
+        telegram_api_id = request.form.get('telegram_api_id')
+        telegram_api_hash = request.form.get('telegram_api_hash')
+        openai_api_key = request.form.get('openai_api_key')
+        
+        # Проверяем наличие всех необходимых данных
+        if not telegram_api_id or not telegram_api_hash or not openai_api_key:
+            return jsonify({'error': 'Не все поля заполнены'}), 400
+        
+        # Создаем или обновляем .env файл
+        env_content = f'''TELEGRAM_API_ID={telegram_api_id}
+TELEGRAM_API_HASH={telegram_api_hash}
+OPENAI_API_KEY={openai_api_key}
+'''
+        
+        with open('.env', 'w') as env_file:
+            env_file.write(env_content)
+        
+        # Перезагружаем переменные окружения
+        load_dotenv(override=True)
+        
+        return jsonify({'status': 'success', 'message': 'Конфигурация успешно сохранена'})
+        
+    except Exception as e:
+        logger.error(f"Ошибка при сохранении конфигурации: {str(e)}")
+        return jsonify({'error': f'Ошибка: {str(e)}'}), 500
+
+@app.route('/init_telegram', methods=['POST'])
+def init_telegram():
+    """Инициализация и авторизация Telegram клиента"""
+    try:
+        # Получаем данные
+        phone = request.form.get('phone')
+        
+        if not phone:
+            return jsonify({'error': 'Номер телефона не указан'}), 400
+        
+        # Создаем сессию для асинхронного взаимодействия
+        session_data = {
+            'phone': phone,
+            'step': 'phone_sent',
+            'timestamp': datetime.now().timestamp()
+        }
+        
+        # Сохраняем данные сессии в файл или Redis (в MVP просто используем файл)
+        session_id = str(int(session_data['timestamp']))
+        with open(f'session_{session_id}.json', 'w') as f:
+            json.dump(session_data, f)
+        
+        # Запускаем процесс отправки кода авторизации
+        asyncio.run(start_telegram_auth(phone, session_id))
+        
+        return jsonify({
+            'status': 'pending', 
+            'session_id': session_id,
+            'message': 'Код авторизации отправлен на указанный номер'
+        })
+        
+    except Exception as e:
+        logger.error(f"Ошибка при инициализации Telegram: {str(e)}")
+        return jsonify({'error': f'Ошибка: {str(e)}'}), 500
+
+@app.route('/verify_telegram_code', methods=['POST'])
+def verify_telegram_code():
+    """Проверка кода авторизации Telegram"""
+    try:
+        # Получаем данные
+        session_id = request.form.get('session_id')
+        code = request.form.get('code')
+        
+        if not session_id or not code:
+            return jsonify({'error': 'Не указан код или идентификатор сессии'}), 400
+        
+        # Загружаем данные сессии
+        with open(f'session_{session_id}.json', 'r') as f:
+            session_data = json.load(f)
+        
+        # Обновляем данные сессии
+        session_data['code'] = code
+        session_data['step'] = 'code_sent'
+        
+        with open(f'session_{session_id}.json', 'w') as f:
+            json.dump(session_data, f)
+        
+        # Проверяем код авторизации
+        result = asyncio.run(verify_telegram_code(session_data['phone'], code))
+        
+        if result.get('status') == 'success':
+            # Удаляем файл сессии
+            os.remove(f'session_{session_id}.json')
+            
+            return jsonify({
+                'status': 'success',
+                'message': 'Авторизация успешно завершена'
+            })
+        elif result.get('status') == '2fa_required':
+            return jsonify({
+                'status': '2fa_required',
+                'message': 'Требуется двухфакторная аутентификация',
+                'session_id': session_id
+            })
+        else:
+            return jsonify({'error': result.get('error', 'Неизвестная ошибка')}), 400
+        
+    except Exception as e:
+        logger.error(f"Ошибка при проверке кода Telegram: {str(e)}")
+        return jsonify({'error': f'Ошибка: {str(e)}'}), 500
+
+@app.route('/verify_telegram_2fa', methods=['POST'])
+def verify_telegram_2fa():
+    """Проверка пароля двухфакторной аутентификации"""
+    try:
+        # Получаем данные
+        session_id = request.form.get('session_id')
+        password = request.form.get('password')
+        
+        if not session_id or not password:
+            return jsonify({'error': 'Не указан пароль или идентификатор сессии'}), 400
+        
+        # Загружаем данные сессии
+        with open(f'session_{session_id}.json', 'r') as f:
+            session_data = json.load(f)
+        
+        # Проверяем пароль 2FA
+        result = asyncio.run(verify_telegram_2fa(session_data['phone'], password))
+        
+        # Удаляем файл сессии
+        os.remove(f'session_{session_id}.json')
+        
+        if result.get('status') == 'success':
+            return jsonify({
+                'status': 'success',
+                'message': 'Авторизация успешно завершена'
+            })
+        else:
+            return jsonify({'error': result.get('error', 'Неверный пароль')}), 400
+        
+    except Exception as e:
+        logger.error(f"Ошибка при проверке 2FA: {str(e)}")
+        return jsonify({'error': f'Ошибка: {str(e)}'}), 500
+
+# Вспомогательные функции для работы с Telegram
+async def start_telegram_auth(phone, session_id):
+    """Запуск процесса авторизации Telegram"""
+    try:
+        api_id = int(os.getenv('TELEGRAM_API_ID'))
+        api_hash = os.getenv('TELEGRAM_API_HASH')
+        
+        client = TelethonClient(TELEGRAM_SESSION_FILE, api_id, api_hash, device_model="Web Interface")
+        
+        # Запуск клиента
+        await client.connect()
+        
+        # Отправка кода подтверждения
+        await client.send_code_request(phone)
+        
+        # Отключение клиента
+        await client.disconnect()
+        
+        return {'status': 'success'}
+        
+    except Exception as e:
+        logger.error(f"Ошибка при запуске авторизации Telegram: {str(e)}")
+        return {'status': 'error', 'error': str(e)}
+
+async def verify_telegram_code(phone, code):
+    """Проверка кода авторизации Telegram"""
+    try:
+        api_id = int(os.getenv('TELEGRAM_API_ID'))
+        api_hash = os.getenv('TELEGRAM_API_HASH')
+        
+        client = TelethonClient(TELEGRAM_SESSION_FILE, api_id, api_hash, device_model="Web Interface")
+        
+        # Запуск клиента
+        await client.connect()
+        
+        try:
+            # Авторизация с полученным кодом
+            await client.sign_in(phone, code)
+            await client.disconnect()
+            return {'status': 'success'}
+            
+        except SessionPasswordNeededError:
+            # Если включена двухфакторная аутентификация
+            await client.disconnect()
+            return {'status': '2fa_required'}
+            
+    except Exception as e:
+        logger.error(f"Ошибка при проверке кода Telegram: {str(e)}")
+        return {'status': 'error', 'error': str(e)}
+
+async def verify_telegram_2fa(phone, password):
+    """Проверка пароля двухфакторной аутентификации"""
+    try:
+        api_id = int(os.getenv('TELEGRAM_API_ID'))
+        api_hash = os.getenv('TELEGRAM_API_HASH')
+        
+        client = TelethonClient(TELEGRAM_SESSION_FILE, api_id, api_hash, device_model="Web Interface")
+        
+        # Запуск клиента
+        await client.connect()
+        
+        try:
+            # Авторизация с паролем
+            await client.sign_in(password=password)
+            await client.disconnect()
+            return {'status': 'success'}
+            
+        except Exception as e:
+            await client.disconnect()
+            return {'status': 'error', 'error': str(e)}
+            
+    except Exception as e:
+        logger.error(f"Ошибка при проверке 2FA: {str(e)}")
+        return {'status': 'error', 'error': str(e)}
+
 if __name__ == '__main__':
     # Проверка наличия необходимых API ключей
     required_keys = ['TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'OPENAI_API_KEY']
@@ -192,8 +434,7 @@ if __name__ == '__main__':
     
     if missing_keys:
         logger.error(f"Отсутствуют необходимые API ключи: {', '.join(missing_keys)}")
-        logger.error("Пожалуйста, добавьте их в файл .env")
-        exit(1)
+        logger.error("Пожалуйста, добавьте их в файл .env или используйте страницу /initialize")
     
     # Инициализация базы данных при запуске
     db.init_db()
